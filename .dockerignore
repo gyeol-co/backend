@@ -1,0 +1,16 @@
+# This .dockerignore applies when build context = app/backend.
+# When the compose builds with context = repo root, it uses the top-level
+# .dockerignore (not present — safe).
+.venv
+.git
+.pytest_cache
+.ruff_cache
+__pycache__
+**/__pycache__
+*.pyc
+tests
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore
