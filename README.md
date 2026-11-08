@@ -8,7 +8,7 @@ Postgres는 pgvector·TimescaleDB를 사용하고, 세션 관련 상태는 Redis
 ## 로컬 개발
 
 Postgres와 Redis가 실행 중이어야 한다. 호스트 서비스 설정은
-[deployments 저장소](https://github.com/gyeol-co/deployments)에서 관리한다.
+[deploy 저장소](https://github.com/gyeol-co/deploy)에서 관리한다.
 TEI의 embedding·reranker 서비스 정의는 data 저장소의 `docker-compose.yml`에 있다.
 
 ```bash
@@ -78,10 +78,10 @@ docker build -t gyeol-backend:local .
 
 [GitHub Actions](.github/workflows/build-push.yml)는 테스트와 이미지 빌드를 수행한다.
 PR 이외의 실행에서는 `ghcr.io/gyeol-co/backend:sha-<commit>`을 게시하고 digest를 출력한다.
-배포할 digest는 deployments 저장소의 Helm values에 기록한다.
+배포할 digest는 deploy 저장소의 Helm values에 기록한다.
 
 실행 명령·Pod 개수·자원 제한·환경 설정·Argo CD Application은
-[deployments 저장소](https://github.com/gyeol-co/deployments)에서 관리한다.
+[deploy 저장소](https://github.com/gyeol-co/deploy)에서 관리한다.
 
 ## 테스트
 
