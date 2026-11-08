@@ -208,11 +208,7 @@ async def run_products_search(
     query: SearchQuery,
 ) -> ProductsSearchResult:
     """Products hybrid search. Branches by sort, enriches, returns page + cursor."""
-    # Query-side tokenisation mirrors the ETL (`data/etl/gold/tokenize.py`) so
-    # the document-side search_vector and the query-side tsquery share the same
-    # lexemes. On top of that we expand each token with its synonym group
-    # (`data/common/synonyms.yaml`) so users typing `자켓` also hit `재킷` /
-    # `jacket` — MeCab does not merge those on its own.
+    # Query tokens must match the lexemes stored in product.search_vector.
     tokens = tokenize_query(query.q)
     tsq_string = build_tsquery_string(tokens)
     # Category/subcategory intent — used as a score bonus in `_rerank_and_slice`.

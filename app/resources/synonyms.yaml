@@ -1,0 +1,90 @@
+# 각 행은 서로 치환 가능한 검색 토큰이다.
+# 쿼리 구성 시 공백·구두점이 제거되므로 MeCab이 반환하는 단일 토큰만 등록한다.
+
+# ─── 상의 ───
+- [자켓, 재킷, jacket]
+- [가디건, 카디건, cardigan]
+- [스웨터, 니트, sweater, knit]
+- [코트, 외투, coat]
+- [블레이저, blazer]
+- [후디, 후드, hoodie, hood]
+- [맨투맨, 스웨트셔츠, sweatshirt]
+- [셔츠, shirt]
+- [블라우스, blouse]
+- [티셔츠, tee, tshirt, 티]
+- [아노락, anorak]
+- [파카, parka]
+- [패딩, 다운, padding, down]
+
+# ─── 하의 ───
+- [팬츠, 바지, pants, pant]
+- [청바지, 진, 데님, jean, jeans, denim]
+- [스커트, 치마, skirt]
+- [조거, jogger]
+- [치노, chino]
+- [슬랙스, slacks]
+
+# ─── 원피스/드레스 ───
+- [드레스, 원피스, dress, onepiece]
+
+# ─── 신발 ───
+- [스니커즈, 운동화, 스니커, sneaker, sneakers]
+- [로퍼, loafer]
+- [부츠, boot, boots]
+- [샌들, sandal, sandals]
+- [슬리퍼, slipper, slippers]
+- [더비, derby]
+- [옥스퍼드, oxford]
+
+# ─── 액세서리 ───
+- [벨트, belt]
+- [가방, bag, bags]
+- [백팩, backpack]
+- [토트백, tote]
+- [모자, cap, hat, caps, hats]
+- [양말, socks, sock]
+- [장갑, gloves, glove]
+- [목도리, 머플러, scarf, muffler]
+- [안경, glasses]
+- [선글라스, sunglass, sunglasses]
+
+# ─── 카테고리 ───
+- [아우터, outer, outerwear]
+- [탑, top, tops]
+- [보텀, bottom, bottoms]
+- [슈즈, 신발, shoes, shoe]
+- [액세서리, accessory, accessories, acc]
+
+# ─── 소재 ───
+- [면, 코튼, cotton]
+- [울, 모직, wool]
+- [나일론, nylon]
+- [폴리에스터, 폴리에스테르, polyester]
+- [린넨, 리넨, linen]
+- [가죽, 레더, leather]
+- [스웨이드, suede]
+- [캐시미어, cashmere]
+- [실크, silk]
+
+# ─── 가공/마감 ───
+- [워싱, washed, wash]
+- [디스트로이드, distressed]
+
+# ─── 스타일 ───
+- [빈티지, vintage]
+- [미니멀, 미니멀리즘, minimal, minimalism, minimalist]
+- [오버사이즈, oversize, oversized]
+- [슬림, slim]
+- [루즈, 루즈핏, loose]
+- [와이드, wide]
+- [스트레이트, straight]
+- [테이퍼드, tapered]
+- [보이프렌드, boyfriend]
+- [크롭, 크롭드, crop, cropped]
+
+# ─── 체크/패턴 ───
+- [스트라이프, stripe, striped]
+- [체크, check, checked, checkered, plaid]
+- [도트, dot, dotted, polkadot]
+- [플로럴, 꽃, floral]
+- [카모, 카무, camo, camouflage]
