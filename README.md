@@ -1,125 +1,90 @@
 # gyeol-backend
 
-> Fashion curation platform API — FastAPI + SQLAlchemy 2.0 async + asyncpg.
-> Part of the [Gyeol](https://gyeol.co) project (편집숍의 안목 + 플랫폼의 기술).
+결의 상품 탐색·검색·브랜드·위시리스트·인증 API다.
+Python 3.12, FastAPI, SQLAlchemy async, asyncpg를 사용한다.
+Postgres는 pgvector·TimescaleDB를 사용하고, 세션 관련 상태는 Redis에 저장한다.
+상품 이미지는 S3, 검색 임베딩과 리랭킹은 TEI에 의존한다.
 
-## Stack
+## 로컬 개발
 
-| Layer | Tech |
-|-------|------|
-| Web framework | FastAPI 0.115+ (async routes, CORS / request-id middleware) |
-| ORM | SQLAlchemy 2.0 async, `MappedAsDataclass`, asyncpg driver |
-| Database | PostgreSQL 18 + pgvector + TimescaleDB hypertables |
-| Cache / sessions | Redis 7 |
-| Storage | AWS S3 (public read for product thumbnails) |
-| Auth | Email + password (argon2) / OAuth (Kakao · Naver · Google) / signed session cookie via itsdangerous |
-| Search | Hybrid — Postgres FTS (tsvector / GIN) + pgvector embeddings (HNSW) + TEI `bge-m3` + optional cross-encoder reranker |
-| Korean NLP | `python-mecab-ko` for symmetric query ↔ document tokenisation, hand-curated synonym dictionary |
-| Package / runtime | `uv`, Python 3.12 |
-
-## Structure
-
-```
-app/
-├── api/
-│   ├── deps.py                   # DbSession, CurrentUser, OptionalUser dependencies
-│   └── routes/                   # thin HTTP handlers — one router per feature
-│       ├── auth.py               # signup / login / OAuth callback / session cookie
-│       ├── discover.py           # popular / new / foryou / following / detail / related
-│       ├── brand.py              # index / detail / products / follow · unfollow
-│       ├── wishlist.py           # add / remove / list (Wishlist M:N + event dual-write)
-│       ├── search.py             # hybrid search + suggestions
-│       ├── _brand_mapping.py     # ORM → BrandIndexItem DTO mappers
-│       └── _product_mapping.py   # ORM → ProductListItem DTO mappers
-├── clients/
-│   ├── embedding.py              # TEI /embed — bge-m3 (1024-dim, fail-open)
-│   └── reranker.py               # TEI /rerank — bge-reranker-v2-m3 (fail-open)
-├── core/
-│   ├── config.py                 # pydantic-settings env loader
-│   ├── db.py                     # one transaction per request via `get_db_session`
-│   ├── envelope.py               # StandardSuccessResponse / StandardErrorResponse
-│   ├── errors.py                 # AppException + AppErrorCodeEnum (central HTTP mapping)
-│   ├── redis.py, s3.py, session_cookie.py, request_id.py
-│   └── password.py
-├── models/                       # SQLAlchemy 2.0 Mapped classes — taxonomy-driven
-│   ├── brand.py, product.py, user.py, oauth.py, consent_log.py
-│   ├── wishlist.py, brand_follow.py, user_product_affinity.py
-│   └── brand_event.py, product_event.py, search_event.py   # hypertables
-├── oauth_providers/              # one strategy per provider (authorize / exchange / userinfo)
-│   ├── base.py, kakao.py, naver.py, google.py
-├── schemas/                      # Pydantic v2 DTOs — request queries + response envelopes
-│   └── auth.py, brand.py, discover.py, search.py
-├── services/                     # business logic — only when routes grow complex
-│   ├── auth.py                   # signup race handling, OAuth pending-token handshake
-│   ├── brand_follow.py           # dual-write (brand_follow + brand_event)
-│   ├── wishlist.py               # wishlist cap + advisory lock
-│   ├── product.py                # detail + view-event fire-and-forget
-│   ├── search.py                 # hybrid pipeline orchestration
-│   ├── _tokenizer.py             # MeCab POS filter + stop-words
-│   ├── _tsquery.py               # tsquery builder with synonym OR-expansion
-│   └── _synonyms.py              # yaml loader for synonyms.yaml
-├── constants/
-│   └── search.py                 # FTS candidate cap, rerank weights, etc.
-└── main.py                       # FastAPI app factory + global exception handlers
-```
-
-## Request flow
-
-```
-client → FastAPI route   (DbSession dep opens tx)
-           │
-           ├── route handler (thin — parse input, delegate)
-           │     └── service (business logic, raises AppException)
-           │           └── ORM / external client (TEI, S3)
-           │
-           └── response wrapped in StandardSuccessResponse
-                 └── get_db_session commits (or rollback on exception)
-```
-
-Errors always flow through `AppException(AppErrorCodeEnum.X)` so the global handler emits the standard envelope:
-
-```jsonc
-{
-  "data": null,
-  "meta": {
-    "request_id": "req_...",
-    "error": { "code": "VALIDATION_ERROR", "detail_payload": {...} }
-  }
-}
-```
-
-## Search pipeline (highlights)
-
-```
-query
-  ├─ MeCab tokenise + synonym expand → tsquery `(자켓 | 재킷 | jacket) & ...`
-  ├─ FTS candidate (GIN index, top-K=200)
-  │     └─ empty? → embedding-only ANN fallback (HNSW) + TEI reranker
-  ├─ embedding rerank (TEI /embed → cosine, combined with ts_rank)
-  ├─ category/subcategory intent boost (`셔츠` → subcategory=shirt +2.0)
-  ├─ cursor-filter + slice
-  └─ enrich (is_wishlisted / is_followed) + search_event log (login, first page)
-```
-
-Every pipeline stage fails open — TEI down just means ts_rank-only ordering, never a 5xx.
-
-## Local run
+Postgres와 Redis가 실행 중이어야 한다. 호스트 서비스 설정은
+[deployments 저장소](https://github.com/gyeol-co/deployments)에서 관리한다.
+TEI의 embedding·reranker 서비스 정의는 data 저장소의 `docker-compose.yml`에 있다.
 
 ```bash
-cp .env.example .env       # fill SESSION_SECRET + OAuth + AWS keys
-uv sync
+cp .env.example .env
+uv sync --frozen
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-Postgres + Redis + TEI run from the sibling `deploy/` compose.
+실행 전에 `.env`의 DB·Redis 접속 정보와 `SESSION_SECRET`을 채운다.
+OAuth·S3를 사용할 때는 해당 자격증명도 설정한다.
+전체 환경변수와 기본값은 [Settings](app/core/config.py), 로컬 예시는 [.env.example](.env.example)을 따른다.
 
-## Portfolio note
+## 코드 구조
 
-This backend deliberately **doesn't hide complexity behind clever abstractions**:
+| 위치 | 책임 |
+|---|---|
+| [app/main.py](app/main.py) | 앱 생성·생명주기·미들웨어·예외 처리·상태 확인 |
+| `app/api/` | HTTP 라우터와 DB 세션·인증 의존성 |
+| `app/services/` | 인증·검색·상품·위시리스트 등의 처리 |
+| `app/clients/` | TEI embedding·reranker 호출 |
+| `app/core/` | 설정·DB·Redis·S3·세션·공통 응답 |
+| `app/models/`, `app/schemas/` | SQLAlchemy 모델과 요청·응답 타입 |
+| `app/oauth_providers/` | Kakao·Naver·Google OAuth 연동 |
+| `app/resources/synonyms.yaml` | 이미지에 함께 포함되는 검색 동의어 사전 |
 
-- one transaction per HTTP request (no nested `db.begin()` in services)
-- handlers stay thin — business logic lives in explicit service modules when it outgrows a route
-- every failure mode is typed (`AppErrorCodeEnum`), never bare `HTTPException`
-- external calls (TEI, S3) are fail-open by default to protect the happy path
+### 요청 처리
 
-It's a 0-users MVP sized for one person to operate, with clear seams for each piece to scale later (multi-replica BE, dedicated reranker service, separate search cluster, etc.).
+DB 세션을 사용하는 API는 [get_db_session](app/core/db.py)의 트랜잭션을 공유한다.
+요청이 정상 종료되면 commit하고, 예외가 발생하면 rollback한다.
+서비스에서 별도 `db.begin()`을 호출하지 않는다.
+
+업무 API는 [공통 응답 타입](app/core/envelope.py)의 `data`와 `meta`를 반환한다.
+`meta`에는 request ID, 다음 페이지 커서, 오류 코드가 들어간다.
+`AppException`과 요청 검증 오류는 `main.py`의 예외 처리기에서 변환한다.
+상태 확인 엔드포인트는 별도의 간단한 JSON 응답을 사용한다.
+
+### 검색
+
+[검색 서비스](app/services/search.py)는 MeCab 토큰에 동의어를 확장해 Postgres FTS로 후보를 찾는다.
+관련도 정렬에서는 임베딩 유사도와 카테고리 의도를 점수에 반영한다.
+FTS 후보가 없으면 임베딩 ANN 검색을 시도하고, 이 경로에서 cross-encoder 리랭커를 사용한다.
+이후 커서를 적용하고 위시리스트 등 사용자별 정보를 보강한다.
+
+TEI 호출 실패 시 FTS 결과는 키워드 점수 순서를 사용하고, 리랭커 실패 시 ANN 순서를 유지한다.
+다른 정렬 옵션은 SQL 정렬을 사용한다.
+
+동의어 사전은 기본적으로 [app/resources/synonyms.yaml](app/resources/synonyms.yaml)을 읽는다.
+`SYNONYMS_PATH`로 다른 파일을 지정할 수 있다. MeCab이 실제로 반환하는 단일 토큰을 등록한다.
+
+## 상태 확인
+
+| 경로 | 검사 | 실패 시 |
+|---|---|---|
+| `/healthz` | 프로세스 응답 | Kubernetes liveness/startup 실패 판단 |
+| `/readyz` | 3초 안에 Postgres `SELECT 1`과 Redis `PING` 완료 | HTTP 503으로 트래픽에서 제외 |
+
+DB·Redis 장애가 프로세스 재시작으로 이어지지 않도록 두 검사를 분리한다.
+TEI는 검색의 선택적 의존성이므로 readiness 검사에 포함하지 않는다.
+
+## 이미지와 배포
+
+이 저장소를 빌드 컨텍스트로 사용한다. 형제 저장소 없이 빌드할 수 있다.
+
+```bash
+docker build -t gyeol-backend:local .
+```
+
+[GitHub Actions](.github/workflows/build-push.yml)는 테스트와 이미지 빌드를 수행한다.
+PR 이외의 실행에서는 `ghcr.io/gyeol-co/backend:sha-<commit>`을 게시하고 digest를 출력한다.
+배포할 digest는 deployments 저장소의 Helm values에 기록한다.
+
+실행 명령·Pod 개수·자원 제한·환경 설정·Argo CD Application은
+[deployments 저장소](https://github.com/gyeol-co/deployments)에서 관리한다.
+
+## 테스트
+
+```bash
+uv run --frozen pytest
+```

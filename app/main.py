@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import logging.config
 import traceback
@@ -10,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from sqlalchemy import text
 
 from app.api.routes import auth as auth_routes
 from app.api.routes import brand as brand_routes
@@ -19,12 +21,13 @@ from app.api.routes import wishlist as wishlist_routes
 from app.clients import embedding as embedding_client
 from app.clients import reranker as reranker_client
 from app.core.config import get_settings
-from app.services import _synonyms as synonym_loader
-from app.services import _tokenizer as tokenizer
+from app.core.db import get_engine
 from app.core.envelope import ErrorMeta, StandardErrorResponse, StandardResponseMeta
 from app.core.errors import AppErrorCodeEnum, AppException
-from app.core.redis import close_redis
+from app.core.redis import close_redis, get_redis
 from app.core.request_id import RequestIdMiddleware, current_request_id
+from app.services import _synonyms as synonym_loader
+from app.services import _tokenizer as tokenizer
 
 logger = logging.getLogger("gyeol")
 
@@ -38,8 +41,7 @@ def _configure_logging() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Warm up process-wide singletons so the first user query doesn't eat
-    # the MeCab dict-load (~100ms) or the synonyms.yaml parse cost.
+    # Avoid loading dictionaries on the first search request.
     tokenizer.warmup()
     synonym_loader.warmup()
     yield
@@ -67,8 +69,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ---- exception handlers ----
-
     @app.exception_handler(AppException)
     async def _app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
         code = exc.error_code
@@ -83,9 +83,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        # Pydantic's per-error `ctx` may carry a non-JSON-serializable object
-        # (e.g. the underlying ValueError from `@model_validator`). Strip `ctx`
-        # and `url` per entry so the envelope encodes cleanly.
+        # Validation context may contain exceptions that JSON cannot serialize.
         errors = [
             {k: v for k, v in err.items() if k not in ("ctx", "url")}
             for err in exc.errors()
@@ -103,11 +101,8 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ValidationError)
     async def _pydantic_validation_handler(request: Request, exc: ValidationError) -> JSONResponse:
-        # Pydantic ValidationError raised during Depends-bound model instantiation
-        # (e.g. @model_validator on Query DTOs) does NOT auto-wrap as
-        # RequestValidationError, so convert manually. include_url=False and
-        # include_context=False strip non-JSON-serializable fields (e.g. the
-        # original ValueError object stored under ctx.error).
+        # Depends model validators can bypass RequestValidationError.
+        # Exclude exception-valued context from the JSON response.
         errors = exc.errors(include_url=False, include_context=False)
         body = StandardErrorResponse(
             meta=StandardResponseMeta(
@@ -136,8 +131,6 @@ def create_app() -> FastAPI:
         )
         return JSONResponse(status_code=500, content=body.model_dump(mode="json"))
 
-    # ---- routes ----
-
     app.include_router(auth_routes.router)
     app.include_router(brand_routes.router)
     app.include_router(discover_routes.router)
@@ -147,6 +140,20 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def _healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/readyz")
+    async def _readyz() -> JSONResponse:
+        try:
+            async with asyncio.timeout(3):
+                async with get_engine().connect() as connection:
+                    await connection.execute(text("SELECT 1"))
+                redis = await get_redis()
+                await redis.ping()
+        except Exception:
+            # Keep dependency outages separate from liveness, and credentials out of logs.
+            logger.warning("readiness.dependencies_unavailable")
+            return JSONResponse(status_code=503, content={"status": "unavailable"})
+        return JSONResponse(content={"status": "ok"})
 
     return app
 
