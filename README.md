@@ -73,7 +73,7 @@ TEI는 검색의 선택적 의존성이므로 readiness 검사에 포함하지 �
 이 저장소를 빌드 컨텍스트로 사용한다. 형제 저장소 없이 빌드할 수 있다.
 
 ```bash
-docker build -t gyeol-backend:local .
+docker build -t gyeol-backend:bootstrap .
 ```
 
 [GitHub Actions](.github/workflows/build-push.yml)는 테스트와 이미지 빌드를 수행한다.

@@ -55,4 +55,4 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           printf 'Deploy image: `%s@%s`\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Record this digest in deploy/helm/backend/values-local.yaml.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Record this digest in deploy/helm/backend/values.yaml.\n' >> "$GITHUB_STEP_SUMMARY"
